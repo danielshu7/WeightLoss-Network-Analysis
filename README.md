@@ -11,4 +11,4 @@
 `Label_and_Feature_Extraction.ipynb` - filters consolidated data in `valid_user_info_consolidated.csv` by users in `included_users_(sorted).csv`. Then splits into features and labels, stored in `features.csv` and `labels.csv` respectively
 
 ## Models
-`Model Training.ipynb` - not implemented yet
+`Model_Training.ipynb` - partially implemented
