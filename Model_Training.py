@@ -119,7 +119,7 @@ def run(H,L,wd,lr,eval_mask):
     mask = next(data(eval_mask))[1]
     pred = model(data)
     MSE = (pred[mask] - data.y[mask]).square().mean()
-    return MSE
+    return MSE.item()
 
 # find best hyperparameter set
 avg_val_MSEs = []
