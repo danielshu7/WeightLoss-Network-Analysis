@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 from torch_geometric.data import Data
 from torch_geometric.transforms import RandomNodeSplit
+import numpy as np
 
 
 # define GCN class for regression
@@ -87,32 +88,67 @@ D_in = data.num_node_features
 
 # Define Parameters
 # H is hidden dimension; L is number of layers; lr is learning rate; wd is weight decay
-H = 16
-L = 3
-lr=0.05
-wd=5e-4
-num_epochs=500
+H_list = [16,32]
+L_list = [3,4,5]
+lr_list = [1e-5,1e-2,9e-1]
+wd_list = [0,5e-4,1e-1]
+num_epochs = 500
 
-# construct model & optimizer
-model = MultiLayerGCNNet(D_in,H,L).to(device)
-#model = GCNNet(D_in,H).to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
+# constructs & trains model, then evaluates & returns MSE on eval_mask
+def run(H,L,wd,lr,eval_mask):
+    # construct model & optimizer
+    model = MultiLayerGCNNet(D_in,H,L).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
 
-# model training
-model.train()
-for t in range(num_epochs):
-    y_pred = model(data)  # forward pass
-    loss = F.mse_loss(y_pred[data.train_mask], data.y[data.train_mask])  # compute loss
-    if t % 100 == 99:
-        print(t + 1, loss.item())
+    # model training
+    model.train()
+    for t in range(num_epochs):
+        y_pred = model(data)  # forward pass
+        loss = F.mse_loss(y_pred[data.train_mask], data.y[data.train_mask])  # compute loss
+        if t % 100 == 99:
+            #print(t + 1, loss.item())
+            pass
 
-    # Zero gradients, perform a backward pass, and update the weights.
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+        # Zero gradients, perform a backward pass, and update the weights.
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-# get MSE values
-model.eval()
-pred = model(data)
-MSE = (pred[data.test_mask] - data.y[data.test_mask]).square().mean()
-print(MSE.item())
+    # get MSE values
+    model.eval()
+    mask = next(data(eval_mask))[1]
+    pred = model(data)
+    MSE = (pred[mask] - data.y[mask]).square().mean()
+    return MSE
+
+# find best hyperparameter set
+avg_val_MSEs = []
+index = 0
+for H in H_list:
+    for L in L_list:
+        for wd in wd_list:
+            for lr in lr_list:
+                # for each hyperparameter set, get average of validation MSEs over num_iters iterations
+                val_MSEs = []
+                num_iters = 1
+                for i in range(num_iters):
+                    val_MSE = run(H,L,wd,lr,"val_mask")
+                    val_MSEs.append(val_MSE)
+                avg_val_MSE = np.array(val_MSEs).mean()
+                print('index {}: (H {}, layers {}, regularization {}, learning rate {}) = '.format(index,H,L,wd,lr), avg_val_MSE)
+                avg_val_MSEs.append(avg_val_MSE)
+                index += 1
+max_val = max(avg_val_MSEs)
+max_val_index = avg_val_MSEs.index(max_val)
+print('Best validation:', max_val)
+print('Best index:', max_val_index)
+
+# get best hyperparameters (by validation MSE)
+best_H = H_list[max_val_index // 27]
+best_L = L_list[(max_val_index % 27) // 9]
+best_wd = wd_list[(max_val_index % 9) // 3]
+best_lr = lr_list[max_val_index % 3]
+
+# get test MSE
+test_MSE = run(best_H,best_L,best_wd,best_lr,"test_mask")
+print("Test MSE:",test_MSE)
