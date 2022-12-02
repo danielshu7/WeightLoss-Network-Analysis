@@ -1,59 +1,9 @@
 import pandas as pd
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
 from torch_geometric.data import Data
 from torch_geometric.transforms import RandomNodeSplit
-import numpy as np
-
-
-# define GCN class for regression
-class MultiLayerGCNNet(torch.nn.Module):
-    def __init__(self, D_in, H, L):
-        super(MultiLayerGCNNet, self).__init__()
-        self.L = L
-        self.conv1 = GCNConv(D_in, H)  # first
-        self.model = nn.ModuleList([self.conv1])  # adding first
-        self.model.extend([GCNConv(H, H) for _ in range(self.L - 2)])  # adding others
-        self.convL = GCNConv(H, 1)  # last
-        self.model.append(self.convL)  # adding last
-
-    def forward(self, data):
-        """
-        In the forward function we accept a Tensor of input data and we must return
-        a Tensor of output data. We can use Modules defined in the constructor as
-        well as arbitrary operators on Tensors.
-        """
-        x, edge_index = data.x, data.edge_index
-
-        h = F.relu(self.model[0](x, edge_index))  # relu applied
-        for i in range(1, self.L - 1):
-            h = F.relu(self.model[i](h, edge_index))  # relu applied
-        return self.model[-1](h, edge_index)  # no relu
-
-
-class GCNNet(torch.nn.Module):
-    def __init__(self, D_in, H):
-        """
-        In the constructor we instantiate two nn.Linear modules and assign them as
-        member variables.
-        """
-        super(GCNNet, self).__init__()
-        self.conv1 = GCNConv(D_in, H)
-        self.conv2 = GCNConv(H, 1)
-
-    def forward(self, data):
-        """
-        In the forward function we accept a Tensor of input data and we must return
-        a Tensor of output data. We can use Modules defined in the constructor as
-        well as arbitrary operators on Tensors.
-        """
-        x, edge_index = data.x, data.edge_index
-
-        h = F.relu(self.conv1(x, edge_index))
-        y_pred = self.conv2(h, edge_index)
-        return y_pred
+import models
 
 # set device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -88,16 +38,17 @@ D_in = data.num_node_features
 
 # Define Parameters
 # H is hidden dimension; L is number of layers; lr is learning rate; wd is weight decay
-H_list = [16,32]
-L_list = [3,4]
+H_list = [32]
+L_list = [4]
 lr_list = [1e-2,9e-1]
 wd_list = [5e-4,1e-1]
 num_epochs = 500
+model_class = models.MultiLayerGCNNet
 
 # constructs & trains model, then evaluates & returns MSE on eval_mask
 def run(H,L,wd,lr,eval_mask):
     # construct model & optimizer
-    model = MultiLayerGCNNet(D_in,H,L).to(device)
+    model = model_class(D_in,H,L).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
 
     # model training
@@ -122,7 +73,7 @@ def run(H,L,wd,lr,eval_mask):
     return MSE.item()
 
 # find best hyperparameter set
-avg_val_MSEs = []
+val_MSEs = []
 index = 0
 for H in H_list:
     for L in L_list:
@@ -130,18 +81,18 @@ for H in H_list:
             for lr in lr_list:
                 val_MSE = run(H, L, wd, lr, "val_mask")
                 print('index {}: (H {}, layers {}, regularization {}, learning rate {}) = '.format(index,H,L,wd,lr), val_MSE)
-                avg_val_MSEs.append(val_MSE)
+                val_MSEs.append(val_MSE)
                 index += 1
-max_val = max(avg_val_MSEs)
-max_val_index = avg_val_MSEs.index(max_val)
+max_val = max(val_MSEs)
+max_val_index = val_MSEs.index(max_val)
 print('Best validation:', max_val)
 print('Best index:', max_val_index)
 
 # get best hyperparameters (by validation MSE)
-best_H = H_list[max_val_index // 8]
-best_L = L_list[(max_val_index % 8) // 4]
-best_wd = wd_list[(max_val_index % 4) // 2]
-best_lr = lr_list[max_val_index % 2]
+best_H = H_list[max_val_index // (len(L_list)*len(wd_list)*len(lr_list))]
+best_L = L_list[(max_val_index % (len(L_list)*len(wd_list)*len(lr_list))) // (len(wd_list)*len(lr_list))]
+best_wd = wd_list[(max_val_index % (len(wd_list)*len(lr_list))) // len(lr_list)]
+best_lr = lr_list[max_val_index % len(lr_list)]
 
 # get test MSE
 test_MSE = run(best_H,best_L,best_wd,best_lr,"test_mask")
