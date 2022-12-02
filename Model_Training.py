@@ -5,6 +5,21 @@ from torch_geometric.data import Data
 from torch_geometric.transforms import RandomNodeSplit
 import models
 
+### PARAMETERS TO SET ###
+# chosen network
+network_name = "friend"
+is_undirected = True
+
+# Define Model Hyperparameters
+# H is hidden dimension; L is number of layers; lr is learning rate; wd is weight decay
+H_list = [16]
+L_list = [3]
+lr_list = [1e-2,9e-1]
+wd_list = [5e-4,1e-1]
+num_epochs = 500
+model_class = models.MultiLayerGCNNet
+
+### DATA SETUP ###
 # set device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -18,10 +33,14 @@ torch_labels = torch.from_numpy(labels.iloc[:, [1]].to_numpy()).float()
 # Constructs PyG Data structure for specified network
 # network = "friend", "mention", or "comment"
 # returns PyG Data structure
-def get_network_data(network):
+def get_network_data(network,is_undirected):
     # read in edge list
     assert network in ["friend", "mention", "comment"]
-    edge_list = pd.read_csv(directory + "/" + network + "_edges.csv")
+    if(is_undirected):
+        path = directory + "/" + network + "_edges_undirected.csv"
+    else:
+        path = directory + "/" + network + "_edges_directed.csv"
+    edge_list = pd.read_csv(path)
 
     # convert data to appropriate form and generate an undirected PyG graph
     edge_index = torch.from_numpy(edge_list.to_numpy())
@@ -33,19 +52,10 @@ def get_network_data(network):
 
     return net
     #
-network_name = "friend"
-data = get_network_data(network_name).to(device)
+data = get_network_data(network_name,is_undirected).to(device)
 D_in = data.num_node_features
 
-# Define Model Hyperparameters
-# H is hidden dimension; L is number of layers; lr is learning rate; wd is weight decay
-H_list = [16,32]
-L_list = [3,4]
-lr_list = [1e-2,9e-1]
-wd_list = [5e-4,1e-1]
-num_epochs = 500
-model_class = models.MultiLayerGCNNet
-
+### MODEL TRAINING/EVALUATION ###
 # constructs & trains model, then evaluates & returns MSE on eval_mask
 def run(H,L,wd,lr,eval_mask):
     # construct model & optimizer
@@ -58,7 +68,7 @@ def run(H,L,wd,lr,eval_mask):
         y_pred = model(data)  # forward pass
         loss = F.mse_loss(y_pred[data.train_mask], data.y[data.train_mask])  # compute loss
         if t % 100 == 99:
-            #print(t + 1, loss.item())
+            print(t + 1, loss.sqrt().item())
             pass
 
         # Zero gradients, perform a backward pass, and update the weights.
@@ -70,31 +80,32 @@ def run(H,L,wd,lr,eval_mask):
     model.eval()
     mask = next(data(eval_mask))[1]
     pred = model(data)
-    MSE = (pred[mask] - data.y[mask]).square().mean()
-    return MSE.item()
+    rMSE = (pred[mask] - data.y[mask]).square().mean().sqrt()
+    return rMSE.item()
 
 # find best hyperparameter set
-val_MSEs = []
+val_rMSEs = []
 index = 0
+print("Validation rMSEs:")
 for H in H_list:
     for L in L_list:
         for wd in wd_list:
             for lr in lr_list:
-                val_MSE = run(H, L, wd, lr, "val_mask")
-                print('index {}: (H {}, layers {}, regularization {}, learning rate {}) = '.format(index,H,L,wd,lr), val_MSE)
-                val_MSEs.append(val_MSE)
+                val_rMSE = run(H, L, wd, lr, "val_mask")
+                print('index {}: (H {}, layers {}, regularization {}, learning rate {}) = '.format(index,H,L,wd,lr), val_rMSE)
+                val_rMSEs.append(val_rMSE)
                 index += 1
-max_val = max(val_MSEs)
-max_val_index = val_MSEs.index(max_val)
-print('Best validation:', max_val)
-print('Best index:', max_val_index)
+min_val = min(val_rMSEs)
+min_val_index = val_rMSEs.index(min_val)
+print('Best validation:', min_val)
+print('Best index:', min_val_index)
 
 # get best hyperparameters (by validation MSE)
-best_H = H_list[max_val_index // (len(L_list)*len(wd_list)*len(lr_list))]
-best_L = L_list[(max_val_index % (len(L_list)*len(wd_list)*len(lr_list))) // (len(wd_list)*len(lr_list))]
-best_wd = wd_list[(max_val_index % (len(wd_list)*len(lr_list))) // len(lr_list)]
-best_lr = lr_list[max_val_index % len(lr_list)]
+best_H = H_list[min_val_index // (len(L_list)*len(wd_list)*len(lr_list))]
+best_L = L_list[(min_val_index % (len(L_list)*len(wd_list)*len(lr_list))) // (len(wd_list)*len(lr_list))]
+best_wd = wd_list[(min_val_index % (len(wd_list)*len(lr_list))) // len(lr_list)]
+best_lr = lr_list[min_val_index % len(lr_list)]
 
 # get test MSE
-test_MSE = run(best_H,best_L,best_wd,best_lr,"test_mask")
-print("Test MSE:",test_MSE)
+test_rMSE = run(best_H,best_L,best_wd,best_lr,"test_mask")
+print("Test rMSE:",test_rMSE)
