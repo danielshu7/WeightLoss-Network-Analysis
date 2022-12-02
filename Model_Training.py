@@ -56,8 +56,8 @@ data = get_network_data(network_name,is_undirected).to(device)
 D_in = data.num_node_features
 
 ### MODEL TRAINING/EVALUATION ###
-# constructs & trains model, then evaluates & returns MSE on eval_mask
-def run(H,L,wd,lr,eval_mask):
+# constructs & trains model, then evaluates & returns MSEs validation & test sets
+def run(H,L,wd,lr):
     # construct model & optimizer
     model = model_class(D_in,H,L).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
@@ -68,7 +68,7 @@ def run(H,L,wd,lr,eval_mask):
         y_pred = model(data)  # forward pass
         loss = F.mse_loss(y_pred[data.train_mask], data.y[data.train_mask])  # compute loss
         if t % 100 == 99:
-            print(t + 1, loss.sqrt().item())
+            print("Train rMSE " + str(t + 1) + ":", loss.sqrt().item())
             pass
 
         # Zero gradients, perform a backward pass, and update the weights.
@@ -78,34 +78,26 @@ def run(H,L,wd,lr,eval_mask):
 
     # get MSE values
     model.eval()
-    mask = next(data(eval_mask))[1]
-    pred = model(data)
-    rMSE = (pred[mask] - data.y[mask]).square().mean().sqrt()
-    return rMSE.item()
+    rMSEs = []
+    for _, mask in data('val_mask', 'test_mask'):
+        pred = model(data)
+        rMSE = (pred[mask] - data.y[mask]).square().mean().sqrt().item()
+        rMSEs.append(rMSE)
+    return rMSEs
 
 # find best hyperparameter set
-val_rMSEs = []
+rMSEs = []
 index = 0
-print("Validation rMSEs:")
 for H in H_list:
     for L in L_list:
         for wd in wd_list:
             for lr in lr_list:
-                val_rMSE = run(H, L, wd, lr, "val_mask")
-                print('index {}: (H {}, layers {}, regularization {}, learning rate {}) = '.format(index,H,L,wd,lr), val_rMSE)
-                val_rMSEs.append(val_rMSE)
+                rMSEs.append(run(H, L, wd, lr))
+                print('Val rMSE: index {}: (H {}, layers {}, regularization {}, learning rate {}) = '.format(index,H,L,wd,lr), rMSEs[-1][0])
                 index += 1
-min_val = min(val_rMSEs)
-min_val_index = val_rMSEs.index(min_val)
+vals = [v for v, te in rMSEs]
+min_val = min(vals)
+min_val_index = vals.index(min_val)
 print('Best validation:', min_val)
 print('Best index:', min_val_index)
-
-# get best hyperparameters (by validation MSE)
-best_H = H_list[min_val_index // (len(L_list)*len(wd_list)*len(lr_list))]
-best_L = L_list[(min_val_index % (len(L_list)*len(wd_list)*len(lr_list))) // (len(wd_list)*len(lr_list))]
-best_wd = wd_list[(min_val_index % (len(wd_list)*len(lr_list))) // len(lr_list)]
-best_lr = lr_list[min_val_index % len(lr_list)]
-
-# get test MSE
-test_rMSE = run(best_H,best_L,best_wd,best_lr,"test_mask")
-print("Test rMSE:",test_rMSE)
+print("Test rMSE:",rMSEs[min_val_index][1])
