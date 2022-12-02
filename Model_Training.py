@@ -33,13 +33,14 @@ def get_network_data(network):
 
     return net
     #
-data = get_network_data("friend").to(device)
+network_name = "friend"
+data = get_network_data(network_name).to(device)
 D_in = data.num_node_features
 
-# Define Parameters
+# Define Model Hyperparameters
 # H is hidden dimension; L is number of layers; lr is learning rate; wd is weight decay
-H_list = [32]
-L_list = [4]
+H_list = [16,32]
+L_list = [3,4]
 lr_list = [1e-2,9e-1]
 wd_list = [5e-4,1e-1]
 num_epochs = 500
