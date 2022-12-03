@@ -2,8 +2,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
-from torch_geometric.nn import GATConv
+from torch_geometric.nn import GCNConv, GATConv, SuperGATConv, GeneralConv 
 
 # Multi Layer GCN regression model
 class MultiLayerGCNNet(torch.nn.Module):
@@ -29,16 +28,60 @@ class MultiLayerGCNNet(torch.nn.Module):
             h = F.relu(self.model[i](h, edge_index))  # relu applied
         return self.model[-1](h, edge_index)  # no relu
 
+# Multi Layer GATConv regression model
 class GATNet(torch.nn.Module):
     def __init__(self, D_in, H, L):
- 
         super(GATNet, self).__init__()
-        self.conv1 = GATConv(D_in, H)
-        self.conv2 = GATConv(H, 1)
+        self.L = L
+        self.conv1 = GATConv(D_in, H)  # first
+        self.model = nn.ModuleList([self.conv1])  # adding first
+        self.model.extend([GATConv(H, H) for _ in range(self.L - 2)])  # adding others
+        self.convL = GATConv(H, 1)  # last
+        self.model.append(self.convL)  # adding last
 
     def forward(self, data):
-
         x, edge_index = data.x, data.edge_index
-        x = F.relu(self.conv1(x, edge_index))
-        x = self.conv2(x, edge_index)
-        return F.log_softmax(x, dim=1)
+
+        h = F.relu(self.model[0](x, edge_index))  # relu applied
+        for i in range(1, self.L - 1):
+            h = F.relu(self.model[i](h, edge_index))  # relu applied
+        return self.model[-1](h, edge_index)  # no relu
+    
+# Multi Layer SuperGATConv regression model
+class MultiLayerSuperGATConvNet(torch.nn.Module):
+    def __init__(self, D_in, H, L):
+        super(MultiLayerSuperGATConvNet, self).__init__()
+        self.L = L
+        self.conv1 = SuperGATConv(D_in, H)  # first
+        self.model = nn.ModuleList([self.conv1])  # adding first
+        self.model.extend([SuperGATConv(H, H) for _ in range(self.L - 2)])  # adding others
+        self.convL = SuperGATConv(H, 1)  # last
+        self.model.append(self.convL)  # adding last
+
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
+
+        h = F.relu(self.model[0](x, edge_index))  # relu applied
+        for i in range(1, self.L - 1):
+            h = F.relu(self.model[i](h, edge_index))  # relu applied
+        return self.model[-1](h, edge_index)  # no relu
+    
+# Multi Layer GeneralConv regression model
+class MultiLayerGeneralConvNet(torch.nn.Module):
+    def __init__(self, D_in, H, L):
+        super(MultiLayerGeneralConvNet, self).__init__()
+        self.L = L
+        # Attention parameter = true because MSE is much higher without it for all hyperparameters
+        self.conv1 = GeneralConv(D_in, H, attention=True)  # first
+        self.model = nn.ModuleList([self.conv1])  # adding first
+        self.model.extend([GeneralConv(H, H, attention=True) for _ in range(self.L - 2)])  # adding others
+        self.convL = GeneralConv(H, 1, attention=True)  # last
+        self.model.append(self.convL)  # adding last
+
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
+
+        h = F.relu(self.model[0](x, edge_index))  # relu applied
+        for i in range(1, self.L - 1):
+            h = F.relu(self.model[i](h, edge_index))  # relu applied
+        return self.model[-1](h, edge_index)  # no relu
