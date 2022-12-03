@@ -13,8 +13,8 @@ is_undirected = True
 # Define Model Hyperparameters
 # H is hidden dimension; L is number of layers; lr is learning rate; wd is weight decay
 H_list = [16]
-L_list = [3]
-lr_list = [1e-2,9e-1]
+L_list = [3, 5, 10]
+lr_list = [1e-5, 1e-2, 9e-1]
 wd_list = [5e-4,1e-1]
 num_epochs = 500
 model_class = models.MultiLayerGCNNet
