@@ -35,3 +35,5 @@ for start, final in zip(weights_df, final_weights_df):
     weight_losses.append(start-final)
 print("Age and net weight loss linear regression rMSE: " + str(linear_regression_rmse(ages_df, weight_losses)))
 
+bmi_df = features["bmi"]
+print("BMI and net weight loss linear regression rMSE: " + str(linear_regression_rmse(bmi_df, weight_losses)))
