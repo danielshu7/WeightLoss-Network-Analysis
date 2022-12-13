@@ -85,3 +85,18 @@ class MultiLayerGeneralConvNet(torch.nn.Module):
         for i in range(1, self.L - 1):
             h = F.relu(self.model[i](h, edge_index))  # relu applied
         return self.model[-1](h, edge_index)  # no relu
+
+class Regression(torch.nn.Module):
+    def __init__(self, D_in, H, L):
+        super(Regression, self).__init__()
+        self.L = L
+        self.hid1 = torch.nn.Linear(D_in, H) 
+        self.hid2 = torch.nn.Linear(H, H)
+        self.oupt = torch.nn.Linear(H, 1)
+
+    def forward(self, data):
+        x = data.x
+        z = torch.relu(self.hid1(x))
+        z = torch.relu(self.hid2(z))
+        z = self.oupt(z)  
+        return z
